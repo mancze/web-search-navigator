@@ -4,9 +4,10 @@ on: [push]
 
 jobs:
   test:
-      uses: ./.github/workflows/test.yml
+    uses: ./.github/workflows/test.yml
 
   build:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
