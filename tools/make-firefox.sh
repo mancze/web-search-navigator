@@ -37,6 +37,10 @@ basename="$(sh "$scriptDir/artifact-name.sh" --platform "firefox")"
 
 # do not sign as it would result in signed add-on intended for self-distribution
 echo 'Creating package...'
-yarn run web-ext build --source-dir "$OBJ" --artifacts-dir "$BIN" --filename "$basename-$version.zip" "$@"
+yarn run web-ext build --source-dir "$OBJ" --artifacts-dir "$BIN" --filename "$basename.zip" "$@"
+
+# web-ext converts filename lowercase
+# apply the version string (with possible uppercase, e.g. SNAPSHOT) as a post-build step
+mv "$BIN/$basename.zip" "$BIN/$basename-$version.zip"
 
 echo 'Build complete'
