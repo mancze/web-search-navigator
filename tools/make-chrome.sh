@@ -5,6 +5,7 @@
 #
 ##
 echo 'Building Web Search Navigator for Chrome'
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
 
 # copy the sources into the working directory
 BIN=./build/chrome
@@ -18,7 +19,7 @@ mkdir -p "$OBJ"
 cp -R ./src/* "$OBJ"
 
 echo 'Determining version'
-VERSION="$(./node_modules/node-jq/bin/jq ".version" -r < ./src/manifest.json)-SNAPSHOT"
+VERSION="$(sh "$SCRIPT_DIR/version.sh" 'SNAPSHOT')"
 echo "$VERSION"
 
 echo 'Creating package...'
