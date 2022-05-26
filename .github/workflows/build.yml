@@ -13,10 +13,26 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v2
+
       - name: Install modules
         run: yarn install --frozen-lockfile
+
       - run: yarn build --env production
+
       - name: Build for Chrome
         run: sh ./tools/make-chrome.sh
+
+      - name: Publish Chrome artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: chrome-extension
+          path: build/chrome/package.zip
+
       - name: Build for Firefox
         run: sh ./tools/make-firefox.sh
+
+      - name: Publish Firefox artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: firefox-extension
+          path: build/firefox/web_search_navigator-*.zip
