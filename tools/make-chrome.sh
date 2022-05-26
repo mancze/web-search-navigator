@@ -5,7 +5,7 @@
 #
 ##
 echo 'Building Web Search Navigator for Chrome'
-SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
+scriptDir="$(dirname "$0")"
 
 # copy the sources into the working directory
 BIN=./build/chrome
@@ -19,10 +19,12 @@ mkdir -p "$OBJ"
 cp -R ./src/* "$OBJ"
 
 echo 'Determining version'
-VERSION="$(sh "$SCRIPT_DIR/version.sh" 'SNAPSHOT')"
-echo "$VERSION"
+version="$(sh "$scriptDir/version.sh" 'SNAPSHOT')"
+echo "$version"
+
+basename="$(sh "$scriptDir/artifact-name.sh" --platform "chrome")"
 
 echo 'Creating package...'
-zip -FSj "$BIN/web_search_navigator.chrome-$VERSION.zip" $OBJ/*
+zip -FSj "$BIN/$basename-$version.zip" $OBJ/*
 
 echo 'Build complete'

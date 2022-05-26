@@ -15,7 +15,7 @@
 #   dependencies with `yarn install`)
 
 echo 'Building Web Search Navigator for Firefox'
-SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
+scriptDir="$(dirname "$0")"
 
 # copy the sources into the working directory
 BIN=build/firefox
@@ -30,11 +30,13 @@ cp -R src/* "$OBJ"
 
 # build and pack the package
 echo 'Determining version'
-VERSION="$(sh "$SCRIPT_DIR/version.sh" 'SNAPSHOT')"
-echo "$VERSION"
+version="$(sh "$scriptDir/version.sh" "SNAPSHOT")"
+echo "$version"
+
+basename="$(sh "$scriptDir/artifact-name.sh" --platform "firefox")"
 
 # do not sign as it would result in signed add-on intended for self-distribution
 echo 'Creating package...'
-yarn run web-ext build --source-dir "$OBJ" --artifacts-dir "$BIN" "$@" --filename test.zip
+yarn run web-ext build --source-dir "$OBJ" --artifacts-dir "$BIN" --filename "$basename-$version.zip" "$@"
 
 echo 'Build complete'
