@@ -22,17 +22,13 @@ jobs:
       - name: Build for Chrome
         run: sh ./tools/make-chrome.sh
 
-      - name: Publish Chrome artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: chrome-extension
-          path: build/chrome/package.zip
-
       - name: Build for Firefox
         run: sh ./tools/make-firefox.sh
 
-      - name: Publish Firefox artifacts
+      - name: Publish artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: firefox-extension
-          path: build/firefox/web_search_navigator-*.zip
+          name: browser-extensions
+          path: |
+            build/chrome/package.zip
+            build/firefox/web_search_navigator-*.zip
