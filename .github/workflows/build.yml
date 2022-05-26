@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   test:
-      uses: .github/workflows/test.yml
+      uses: ./.github/workflows/test.yml
 
   build:
     runs-on: ubuntu-latest
@@ -16,6 +16,6 @@ jobs:
         run: yarn install --frozen-lockfile
       - run: yarn build --env production
       - name: Build for Chrome
-        run: sh tools/make-chrome.sh
+        run: sh ./tools/make-chrome.sh
       - name: Build for Firefox
-        run: sh tools/make-firefox.sh
+        run: sh ./tools/make-firefox.sh
