@@ -18,8 +18,8 @@ mkdir -p "$OBJ"
 cp -R ./src/* "$OBJ"
 
 echo 'Determining version'
-VERSION="$(cat ./src/manifest.json | ./node_modules/node-jq/bin/jq ".version" -r)-SNAPSHOT"
-echo $VERSION
+VERSION="$(./node_modules/node-jq/bin/jq ".version" -r < ./src/manifest.json)-SNAPSHOT"
+echo "$VERSION"
 
 echo 'Creating package...'
 zip -FSj "$BIN/web_search_navigator.chrome-$VERSION.zip" $OBJ/*
