@@ -28,7 +28,8 @@ jobs:
       - name: Publish artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: browser-extensions
+          name: web-search-navigator
           path: |
-            build/chrome/package.zip
+            build/chrome/web_search_navigator.chrome-*.zip
             build/firefox/web_search_navigator-*.zip
+          if-no-files-found: error

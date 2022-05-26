@@ -7,7 +7,7 @@
 echo 'Building Web Search Navigator for Chrome'
 
 # copy the sources into the working directory
-BIN=build/chrome
+BIN=./build/chrome
 OBJ="$BIN/obj"
 echo 'Copying files...'
 
@@ -15,9 +15,13 @@ echo 'Copying files...'
 rm -rf "$OBJ"
 mkdir -p "$OBJ"
 
-cp -R src/* "$OBJ"
+cp -R ./src/* "$OBJ"
+
+echo 'Determining version'
+VERSION="$(cat ./src/manifest.json | ./node_modules/node-jq/bin/jq ".version" -r)-SNAPSHOT"
+echo $VERSION
 
 echo 'Creating package...'
-zip -FSj "$BIN/package.zip" $OBJ/*
+zip -FSj "$BIN/web_search_navigator.chrome-$VERSION.zip" $OBJ/*
 
 echo 'Build complete'

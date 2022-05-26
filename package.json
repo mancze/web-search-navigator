@@ -37,6 +37,7 @@
     "gulp": "^4.0.2",
     "gulp-if": "^3.0.0",
     "gulp-terser": "^2.1.0",
+    "node-jq": "^2.3.3",
     "markdownlint-cli": "^0.31.1",
     "minimist": "^1.2.6",
     "prettier": "2.6.2",
