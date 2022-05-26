@@ -3,12 +3,19 @@ name: Build
 on: [push]
 
 jobs:
+  test:
+      uses: .github/workflows/test.yml
+
   build:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
-      - run: yarn install --frozen-lockfile
+      - uses: actions/setup-node@v2
+      - name: Install modules
+        run: yarn install --frozen-lockfile
       - run: yarn build --env production
-      - run: sh tools/make-chrome.sh
-      - run: sh tools/make-firefox.sh
+      - name: Build for Chrome
+        run: sh tools/make-chrome.sh
+      - name: Build for Firefox
+        run: sh tools/make-firefox.sh
