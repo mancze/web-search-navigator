@@ -30,6 +30,6 @@ jobs:
         with:
           name: web-search-navigator
           path: |
-            build/chrome/web_search_navigator.chrome-*.zip
-            build/firefox/web_search_navigator-*.zip
+            build/chrome/*.zip
+            build/firefox/*.zip
           if-no-files-found: error
