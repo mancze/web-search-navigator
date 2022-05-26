@@ -11,3 +11,4 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn build --env production
       - run: sh tools/make-chrome.sh
+      - run: sh tools/make-firefox.sh
