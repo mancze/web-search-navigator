@@ -1,0 +1,33 @@
+name: Bump Version
+
+on: [ push, workflow_dispatch ]
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Detect current version
+        run: |
+          CURRENT_VERSION=$(sh tools/version.sh)
+          echo "$CURRENT_VERSION"
+      - name: Detect next version
+        id: bump-version
+        uses: christian-draeger/increment-semantic-version@1.0.2
+        with:
+          current-version: ${CURRENT_VERSION}
+          version-fragment: feature
+      - name: Replace version in manifest
+        run: |
+          NEXT_VERSION=${{ steps.bump-version.outputs.next-version }}
+          awk '{ gsub("\"version\":.+", "\"version\": \"'"$NEXT_VERSION"'\",") }1' src/manifest.json > src/manifest.json.tmp
+          mv -f src/manifest.json.tmp src/manifest.json
+          cat src/manifest.json
+      - name: Verify modified manifest
+        run: jq empty < src/manifest.json
+      - name: Push
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: 'src/manifest.json'
+          commit: --signoff
+          message: Bump version to ${{ steps.bump-version.outputs.next-version }}
