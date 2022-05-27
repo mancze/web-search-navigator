@@ -8,15 +8,16 @@ echo 'Building Web Search Navigator for Chrome'
 scriptDir="$(dirname "$0")"
 
 # copy the sources into the working directory
-BIN=./build/chrome
-OBJ="$BIN/obj"
+
+bin=./build/chrome
+obj="$bin/obj"
 echo 'Copying files...'
 
 # cleanup the previous build
-rm -rf "$OBJ"
-mkdir -p "$OBJ"
+rm -rf "$obj"
+mkdir -p "$obj"
 
-cp -R ./src/* "$OBJ"
+cp -R ./src/* "$obj"
 
 echo 'Determining version'
 version="$(sh "$scriptDir/version.sh" 'SNAPSHOT')"
@@ -25,6 +26,6 @@ echo "$version"
 basename="$(sh "$scriptDir/artifact-name.sh" --platform "chrome")"
 
 echo 'Creating package...'
-zip -FSj "$BIN/$basename-$version.zip" $OBJ/*
+zip -FSj "$bin/$basename-$version.zip" $obj/*
 
 echo 'Build complete'

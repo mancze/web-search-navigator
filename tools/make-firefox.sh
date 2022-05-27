@@ -18,15 +18,15 @@ echo 'Building Web Search Navigator for Firefox'
 scriptDir="$(dirname "$0")"
 
 # copy the sources into the working directory
-BIN=build/firefox
-OBJ="$BIN/obj"
+bin=build/firefox
+obj="$bin/obj"
 echo 'Copying files...'
 
 # cleanup the previous build
-rm -rf "$OBJ"
-mkdir -p "$OBJ"
+rm -rf "$obj"
+mkdir -p "$obj"
 
-cp -R src/* "$OBJ"
+cp -R src/* "$obj"
 
 # build and pack the package
 echo 'Determining version'
@@ -37,10 +37,10 @@ basename="$(sh "$scriptDir/artifact-name.sh" --platform "firefox")"
 
 # do not sign as it would result in signed add-on intended for self-distribution
 echo 'Creating package...'
-yarn run web-ext build --source-dir "$OBJ" --artifacts-dir "$BIN" --filename "$basename.zip" "$@"
+yarn run web-ext build --source-dir "$obj" --artifacts-dir "$bin" --filename "$basename.zip" "$@"
 
 # web-ext converts filename lowercase
 # apply the version string (with possible uppercase, e.g. SNAPSHOT) as a post-build step
-mv "$BIN/$basename.zip" "$BIN/$basename-$version.zip"
+mv "$bin/$basename.zip" "$bin/$basename-$version.zip"
 
 echo 'Build complete'
