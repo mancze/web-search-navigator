@@ -1,0 +1,9 @@
+name: Unstuck
+
+on: [push, workflow_dispatch]
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
