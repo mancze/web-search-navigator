@@ -2,6 +2,10 @@ name: Bump Version
 
 on: [ push, workflow_dispatch ]
 
+env:
+  CURRENT_VERSION: ""
+  NEXT_VERSION: ""
+
 jobs:
   version:
     runs-on: ubuntu-latest
