@@ -1,15 +1,55 @@
 # Changelog
 
-## 0.4.21 (unreleased)
+As of 2023-05-30, the published versions are `0.5.2` for Chrome and `0.5.2` for
+Firefox.
+
+## Unreleased
+
+## 0.5.2
+
+- General: fix auto-select with no initial results
+- Gitlab: new experimental support
+
+## 0.5.1
+
+- General: open new tabs in the same tab group of the current tab (issue #524)
+
+## 0.5.0
+
+- Google: fix detecting more results when in the new "continuous results" experience
+- Google: fix search box keybindings (#515)
+- Google: fix job cards (#406)
+- Google: exclude sidebar
+- General: don't fail if search result container isn't detected, just write to
+  console.
+- YouTube: fix navigation in non-grid pages
+- YouTube: fix grid navigation in home page (issue #405)
+- YouTube: debounce results loading calls
+- Brave: fix navigation to images and videos tabs
+- Startpage: fix input box selection
+- Amazon: fix page navigation buttons
+- Github: fix search box selector (still buggy)
+- Github: fix navigation/mutation detection
+
+## 0.4.22
+
+- Google: fix navigation in some feature snippets
+- YouTube: enable 4-key grid navigation. In addition to the next/previous search
+  result keybindings, the two keybindings for the next/previous _page_ are used.
+  YouTube has infinite scrolling, so navigating to the next/previous page isn't
+  relevant there anyway.
+
+## 0.4.21
 
 - YouTube: fix selection of playlist results (#382)
 
-## 0.4.20 (released to Chrome on 2022-05-09)
+## 0.4.20
 
 - Google Scholar: fix selection arrow alignment
 - YouTube: fix race condition in looking for search results
 - YouTube: fix home page list
-- YouYube: fix navigation not working after searching from a video (https://github.com/infokiller/web-search-navigator/issues/337)
+- YouYube: fix navigation not working after searching from a video
+  (https://github.com/infokiller/web-search-navigator/issues/337)
 - Better dark mode support
 - Google: multiple fixes to support new and changed card types
 

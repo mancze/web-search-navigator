@@ -1,8 +1,8 @@
 {
     "manifest_version": 2,
     "name": "Web Search Navigator",
-    "version": "0.4.21",
-    "description": "Keyboard shortcuts for Google search, YouTube, Startpage, Brave Search, Google Scholar, Github, and Amazon.",
+    "version": "0.5.2",
+    "description": "Keyboard shortcuts for Google search, YouTube, Startpage, Brave Search, Google Scholar, Github, Gitlab, and Amazon.",
     "author": "Web Search Navigator",
     "icons": {
         "16": "icon16.png",
@@ -12,11 +12,10 @@
     "browser_specific_settings": {
         "gecko": {
             "id": "{ffadac89-63bb-4b04-be90-8cb2aa323171}",
-            "strict_min_version": "68.0"
+            "strict_min_version": "91.0"
         }
     },
     "permissions": ["storage"],
-    "options_page": "options_page.html",
     "options_ui": {
         "page": "options_page.html",
         "chrome_style": true
@@ -238,11 +237,13 @@
         }
     ],
     "optional_permissions": [
+        "https://*/*",
         "https://search.brave.com/*",
         "https://startpage.com/*",
         "https://www.startpage.com/*",
         "https://www.youtube.com/*",
         "https://github.com/*",
+        "https://gitlab.com/*",
         "https://www.github.com/*",
         "https://www.amazon.com/*",
         "https://www.amazon.cn/*",

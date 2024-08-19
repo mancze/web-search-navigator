@@ -8,6 +8,10 @@ const FOCUS_SCROLL_ONLY = 2;
 
 // Returns true if scrolling was done.
 const scrollToElement = (searchEngine, element) => {
+  if (element == null) {
+    console.error('Cannot scroll to null element');
+    return;
+  }
   let topMargin = 0;
   if (searchEngine.getTopMargin) {
     topMargin = searchEngine.getTopMargin(element);
@@ -30,15 +34,72 @@ const scrollToElement = (searchEngine, element) => {
   return Math.abs(window.scrollY - scrollY) > 0.01;
 };
 
+const bindKeys = (bindings, toggle) => {
+  // NOTE: Mousetrap calls the handler even if there's a larger sequence that
+  // ends with the same key. For example, if the user binds both 'a b' and
+  // 'b', when pressing the sequence 'a b' both handlers will be called, which
+  // is not the desired behavior for this extension. Therefore, we first sort
+  // all keybindings by their sequence length, so that handlers of larger
+  // sequences will be called before the shorter ones. Then, we only call
+  // other handlers if the previous handler returned true.
+  bindings.sort((a, b) => {
+    return b[0].split(' ').length - a[0].split(' ').length;
+  });
+  let lastEvent;
+  let lastHandlerResult;
+  for (const [shortcut, element, global, callback] of bindings) {
+    const wrappedCallback = (event) => {
+      if (!toggle['active']) {
+        return true;
+      }
+      if (event === lastEvent && !lastHandlerResult) {
+        return;
+      }
+      lastEvent = event;
+      lastHandlerResult = callback(event);
+      return lastHandlerResult;
+    };
+    if (global) {
+      /* eslint-disable-next-line new-cap */
+      Mousetrap(element).bindGlobal(shortcut, wrappedCallback);
+    } else {
+      /* eslint-disable-next-line new-cap */
+      Mousetrap(element).bind(shortcut, wrappedCallback);
+    }
+  }
+};
+
 class SearchResultsManager {
   constructor(searchEngine, options) {
     this.searchEngine = searchEngine;
     this.options = options;
-    this.focusedIndex = 0;
+    this.focusedIndex = -1;
+    this.isInitialFocusSet = false;
   }
 
   reloadSearchResults() {
     this.searchResults = this.searchEngine.getSearchResults();
+    if (!this.isInitialFocusSet) {
+      this.setInitialFocus();
+    }
+  }
+
+  setInitialFocus() {
+    if (this.searchResults.length === 0) {
+      return;
+    }
+    const lastNavigation = this.options.local.values;
+    if (
+      location.href === lastNavigation.lastQueryUrl &&
+      lastNavigation.lastFocusedIndex >= 0 &&
+      lastNavigation.lastFocusedIndex < this.searchResults.length
+    ) {
+      this.focus(lastNavigation.lastFocusedIndex, FOCUS_SCROLL_ON);
+    } else if (this.options.sync.get('autoSelectFirst')) {
+      // Highlight the first result when the page is loaded, but don't scroll to
+      // it because there may be KP cards such as stock graphs.
+      this.focus(0, FOCUS_SCROLL_OFF);
+    }
   }
 
   /**
@@ -72,10 +133,14 @@ class SearchResultsManager {
   highlight(searchResult) {
     const highlighted = searchResult.highlightedElement;
     if (highlighted == null) {
+      console.error('No element to highlight: %o', highlighted);
       return;
     }
     highlighted.classList.add(searchResult.highlightClass);
-    if (this.options.hideOutline || searchResult.anchor !== highlighted) {
+    if (
+      this.options.sync.get('hideOutline') ||
+      searchResult.anchor !== highlighted
+    ) {
       searchResult.anchor.classList.add('wsn-no-outline');
     }
   }
@@ -83,6 +148,7 @@ class SearchResultsManager {
   unhighlight(searchResult) {
     const highlighted = searchResult.highlightedElement;
     if (highlighted == null) {
+      console.error('No element to unhighlight: %o', highlighted);
       return;
     }
     highlighted.classList.remove(searchResult.highlightClass);
@@ -127,6 +193,7 @@ class SearchResultsManager {
       scrollToElement(this.searchEngine, searchResult.container);
     }
     this.focusedIndex = index;
+    this.isInitialFocusSet = true;
   }
 
   focusNext(shouldWrap) {
@@ -146,11 +213,42 @@ class SearchResultsManager {
       window.scrollTo(window.scrollX, 0);
     }
   }
+
+  focusDown(shouldWrap) {
+    if (
+      this.focusedIndex + this.searchResults.itemsPerRow <
+      this.searchResults.length
+    ) {
+      this.focus(this.focusedIndex + this.searchResults.itemsPerRow);
+    } else if (shouldWrap) {
+      const focusedRowIndex =
+        this.focusedIndex % this.searchResults.itemsPerRow;
+      this.focus(focusedRowIndex);
+    }
+  }
+
+  focusUp(shouldWrap) {
+    if (this.focusedIndex - this.searchResults.itemsPerRow >= 0) {
+      this.focus(this.focusedIndex - this.searchResults.itemsPerRow);
+    } else if (shouldWrap) {
+      const focusedRowIndex =
+        this.focusedIndex % this.searchResults.itemsPerRow;
+      this.focus(
+          this.searchResults -
+          1 -
+          this.searchResults.itemsPerRow +
+          focusedRowIndex,
+      );
+    } else {
+      window.scrollTo(window.scrollY, 0);
+    }
+  }
 }
 
 class WebSearchNavigator {
   constructor() {
     this.bindings = [];
+    this.bindingsToggle = {active: true};
   }
 
   async init() {
@@ -164,51 +262,8 @@ class WebSearchNavigator {
       return new Promise((resolve) => setTimeout(resolve, milliseconds));
     };
     await sleep(this.options.sync.get('delay'));
-    // UGLY WORKAROUND: Results navigation breaks YouTube space keybinding for
-    // pausing/resuming a video. A workaround is to click on an element on the
-    // page (except the video), but for now I'm disabling results navigation
-    // when watching a video.
-    // TODO: Find a proper fix.
-    if (!window.location.href.match(/^https:\/\/(www)\.youtube\.com\/watch/)) {
-      this.initResultsNavigation();
-    }
     this.injectCSS();
-    this.initTabsNavigation();
-    this.initChangeToolsNavigation();
-    this.initSearchInputNavigation();
-    this.bindKeys();
-  }
-
-  bindKeys() {
-    // NOTE: Mousetrap calls the handler even if there's a larger sequence that
-    // ends with the same key. For example, if the user binds both 'a b' and
-    // 'b', when pressing the sequence 'a b' both handlers will be called, which
-    // is not the desired behavior for this extension. Therefore, we first sort
-    // all keybindings by their sequence length, so that handlers of larger
-    // sequences will be called before the shorter ones. Then, we only call
-    // other handlers if the previous handler returned true.
-    this.bindings.sort((a, b) => {
-      return b[0].split(' ').length - a[0].split(' ').length;
-    });
-    let lastEvent;
-    let lastHandlerResult;
-    for (const [shortcut, element, global, callback] of this.bindings) {
-      const wrappedCallback = (event) => {
-        if (event === lastEvent && !lastHandlerResult) {
-          return;
-        }
-        lastEvent = event;
-        lastHandlerResult = callback(event);
-        return lastHandlerResult;
-      };
-      if (global) {
-        /* eslint-disable-next-line new-cap */
-        Mousetrap(element).bindGlobal(shortcut, wrappedCallback);
-      } else {
-        /* eslint-disable-next-line new-cap */
-        Mousetrap(element).bind(shortcut, wrappedCallback);
-      }
-    }
+    this.initKeybindings();
   }
 
   injectCSS() {
@@ -217,8 +272,33 @@ class WebSearchNavigator {
     document.head.append(style);
   }
 
+  initKeybindings() {
+    this.bindingsToggle['active'] = false;
+    for (const [shortcut, element, ,] of this.bindings) {
+      /* eslint-disable-next-line new-cap */
+      const ms = Mousetrap(element);
+      ms.unbind(shortcut);
+      ms.reset();
+    }
+    const isFirstCall = this.bindings.length === 0;
+    this.bindings = [];
+    // UGLY WORKAROUND: Results navigation breaks YouTube space keybinding for
+    // pausing/resuming a video. A workaround is to click on an element on the
+    // page (except the video), but for now I'm disabling results navigation
+    // when watching a video.
+    // TODO: Find a proper fix.
+    if (!window.location.href.match(/^https:\/\/(www)\.youtube\.com\/watch/)) {
+      this.initResultsNavigation(isFirstCall);
+    }
+    this.initTabsNavigation();
+    this.initChangeToolsNavigation();
+    this.initSearchInputNavigation();
+    this.bindingsToggle = {active: true};
+    bindKeys(this.bindings, this.bindingsToggle);
+  }
+
   initSearchInputNavigation() {
-    const searchInput = document.querySelector(
+    let searchInput = document.querySelector(
         this.searchEngine.searchBoxSelector,
     );
     if (searchInput == null) {
@@ -230,6 +310,15 @@ class WebSearchNavigator {
     const shouldHandleSearchInputKey = (event) => {
       return event.ctrlKey || event.metaKey || event.key === 'Escape';
     };
+    // In Github, the search input element changes while in the page, so we
+    // redetect it if it's not visible.
+    const detectSearchInput = () => {
+      if (searchInput != null && searchInput.offsetParent != null) {
+        return true;
+      }
+      searchInput = document.querySelector(this.searchEngine.searchBoxSelector);
+      return searchInput != null && searchInput.offsetParent != null;
+    };
     // If insideSearchboxHandler returns true, outsideSearchboxHandler will also
     // be called (because it's defined on document, hence has lower priority),
     // in which case we don't want to handle the event. Therefore, we store the
@@ -237,6 +326,9 @@ class WebSearchNavigator {
     // in outsideSearchboxHandler if it's not the same one.
     let lastEvent;
     const outsideSearchboxHandler = (event) => {
+      if (!detectSearchInput()) {
+        return;
+      }
       if (event === lastEvent) {
         return !shouldHandleSearchInputKey(event);
       }
@@ -251,10 +343,13 @@ class WebSearchNavigator {
       // clear to the user that it has focus.
       scrollToElement(this.searchEngine, searchInput);
       searchInput.select();
-      searchInput.click();
+      // searchInput.click();
       return false;
     };
     const insideSearchboxHandler = (event) => {
+      if (!detectSearchInput()) {
+        return;
+      }
       lastEvent = event;
       if (!shouldHandleSearchInputKey(event)) {
         return true;
@@ -303,9 +398,8 @@ class WebSearchNavigator {
     );
   }
 
-  initTabsNavigation() {
-    const tabs = this.searchEngine.tabs || {};
-    for (const [optionName, elementOrGetter] of Object.entries(tabs)) {
+  registerObject(obj) {
+    for (const [optionName, elementOrGetter] of Object.entries(obj)) {
       this.register(this.options.sync.get(optionName), () => {
         if (elementOrGetter == null) {
           return true;
@@ -330,10 +424,22 @@ class WebSearchNavigator {
     }
   }
 
-  initResultsNavigation() {
+  initTabsNavigation() {
+    const tabs = this.searchEngine.tabs || {};
+    this.registerObject(tabs);
+  }
+
+  initResultsNavigation(isFirstCall) {
+    this.registerObject({
+      navigatePreviousResultPage: this.searchEngine.previousPageButton,
+      navigateNextResultPage: this.searchEngine.nextPageButton,
+    });
     this.resetResultsManager();
-    this.registerResultsNavigationKeybindings();
-    if (!this.searchEngine.onChangedResults) {
+    let gridNavigation = this.resultsManager.searchResults.gridNavigation;
+    this.registerResultsNavigationKeybindings(gridNavigation);
+    // NOTE: we must not call onChangedResults multiple times, otherwise the
+    // URL change detection logic (which exists in YouTube) will break.
+    if (!isFirstCall || !this.searchEngine.onChangedResults) {
       return;
     }
     this.searchEngine.onChangedResults((appendedOnly) => {
@@ -342,11 +448,19 @@ class WebSearchNavigator {
       } else {
         this.resetResultsManager();
       }
+      // In YouTube, the initial load does not always detect the grid navigation
+      // (because it can happen before results are actually loaded to the page).
+      // In this case, we must rebind the navigation keys after the results are
+      // loaded.
+      if (gridNavigation != this.resultsManager.searchResults.gridNavigation) {
+        gridNavigation = this.resultsManager.searchResults.gridNavigation;
+        this.initKeybindings();
+      }
     });
   }
 
   resetResultsManager() {
-    if (this.resultsManager != null) {
+    if (this.resultsManager != null && this.resultsManager.focusedIndex >= 0) {
       const searchResult =
         this.resultsManager.searchResults[this.resultsManager.focusedIndex];
       // NOTE: it seems that search results can become undefined when the DOM
@@ -357,52 +471,56 @@ class WebSearchNavigator {
     }
     this.resultsManager = new SearchResultsManager(
         this.searchEngine,
-        this.options.sync.getAll(),
+        this.options,
     );
     this.resultsManager.reloadSearchResults();
-    this.isFirstNavigation = true;
-    if (this.resultsManager.searchResults.length === 0) {
-      return;
-    }
-    const lastNavigation = this.options.local.values;
-    if (
-      location.href === lastNavigation.lastQueryUrl &&
-      lastNavigation.lastFocusedIndex < this.resultsManager.searchResults.length
-    ) {
-      this.isFirstNavigation = false;
-      this.resultsManager.focus(
-          lastNavigation.lastFocusedIndex,
-          FOCUS_SCROLL_ON,
-      );
-    } else if (this.options.sync.get('autoSelectFirst')) {
-      // Highlight the first result when the page is loaded, but don't scroll to
-      // it because there may be KP cards such as stock graphs.
-      this.resultsManager.focus(0, FOCUS_SCROLL_OFF);
-    }
   }
 
-  registerResultsNavigationKeybindings() {
+  registerResultsNavigationKeybindings(gridNavigation) {
     const getOpt = (key) => {
       return this.options.sync.get(key);
     };
-    this.register(getOpt('nextKey'), () => {
-      if (!getOpt('autoSelectFirst') && this.isFirstNavigation) {
-        this.resultsManager.focus(0);
-        this.isFirstNavigation = false;
-      } else {
-        this.resultsManager.focusNext(getOpt('wrapNavigation'));
-      }
-      return false;
-    });
-    this.register(getOpt('previousKey'), () => {
-      if (!getOpt('autoSelectFirst') && this.isFirstNavigation) {
-        this.resultsManager.focus(0);
-        this.isFirstNavigation = false;
-      } else {
-        this.resultsManager.focusPrevious(getOpt('wrapNavigation'));
-      }
-      return false;
-    });
+    const onFocusChange = (callback) => {
+      return () => {
+        if (!this.resultsManager.isInitialFocusSet) {
+          this.resultsManager.focus(0);
+        } else {
+          const _callback = callback.bind(this.resultsManager);
+          _callback(getOpt('wrapNavigation'));
+        }
+        return false;
+      };
+    };
+
+    if (!gridNavigation) {
+      this.register(
+          getOpt('nextKey'),
+          onFocusChange(this.resultsManager.focusNext),
+      );
+      this.register(
+          getOpt('previousKey'),
+          onFocusChange(this.resultsManager.focusPrevious),
+      );
+    } else {
+      this.register(
+          getOpt('nextKey'),
+          onFocusChange(this.resultsManager.focusDown),
+      );
+      this.register(
+          getOpt('previousKey'),
+          onFocusChange(this.resultsManager.focusUp),
+      );
+      // Left
+      this.register(
+          getOpt('navigatePreviousResultPage'),
+          onFocusChange(this.resultsManager.focusPrevious),
+      );
+      // Right
+      this.register(
+          getOpt('navigateNextResultPage'),
+          onFocusChange(this.resultsManager.focusNext),
+      );
+    }
     this.register(getOpt('navigateKey'), () => {
       const link = this.resultsManager.getElementToNavigate();
       if (link == null) {
@@ -440,6 +558,25 @@ class WebSearchNavigator {
       if (link == null) {
         return true;
       }
+      if (getOpt('simulateMiddleClick')) {
+        const mouseEventParams = {
+          bubbles: true,
+          cancelable: false,
+          view: window,
+          button: 1,
+          which: 2,
+          buttons: 0,
+          clientX: link.getBoundingClientRect().x,
+          clientY: link.getBoundingClientRect().y,
+        };
+        const middleClickMousedown = new MouseEvent(
+            'mousedown',
+            mouseEventParams,
+        );
+        link.dispatchEvent(middleClickMousedown);
+        const middleClickMouseup = new MouseEvent('mouseup', mouseEventParams);
+        link.dispatchEvent(middleClickMouseup);
+      }
       browser.runtime.sendMessage({
         type: 'tabsCreate',
         options: {
@@ -448,6 +585,19 @@ class WebSearchNavigator {
         },
       });
       return false;
+    });
+    this.register(getOpt('copyUrlKey'), () => {
+      const link = this.resultsManager.getElementToNavigate();
+      if (
+        link == null || link.localName !== 'a' || !link.href ||
+        !navigator.clipboard
+      ) {
+        return true;
+      }
+      navigator.clipboard.writeText(link.href).then(
+          () => false,
+          (err) => true,
+      );
     });
   }
 

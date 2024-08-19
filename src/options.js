@@ -6,19 +6,19 @@ const DEFAULT_CSS = `/* NOTE:
  *   border can move other elements, for example the page numbers are moved in
  *   Google Scholar when highlighting the prev/next buttons.
  */
- 
+
 :root {
-  --result-outline: 1px solid black; 
+  --result-outline: 1px solid black;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --result-outline: 1px solid #aaaaaa; 
+    --result-outline: 1px solid #aaaaaa;
   }
 }
 
 html[dark], [dark] {
-  --result-outline: 1px solid #aaaaaa; 
+  --result-outline: 1px solid #aaaaaa;
 }
 
 .wsn-google-focused-link {
@@ -30,6 +30,7 @@ html[dark], [dark] {
 
 .wsn-google-focused-link::before,
 .wsn-google-focused-map::before,
+.wsn-gitlab-focused-link::before,
 .wsn-brave-search-focused-link::before,
 .wsn-startpage-focused-link::before {
     content: "\u25BA";
@@ -56,12 +57,14 @@ html[dark], [dark] {
 }
 
 .wsn-google-focused-card,
-.wsn-brave-search-focused-card {
+.wsn-brave-search-focused-card,
+.wsn-google-focused-job-card {
     border: var(--result-outline) !important;
 }
 
 .wsn-google-focused-map,
-.wsn-google-card-item {
+.wsn-google-card-item,
+.wsn-gitlab-focused-group-row {
     outline: var(--result-outline) !important;
 }
 
@@ -149,6 +152,7 @@ const DEFAULT_KEYBINDINGS = {
   showImagesLarge: ['z l'],
   showImagesMedium: ['z e'],
   showImagesIcon: ['z i'],
+  copyUrlKey: [],
 };
 
 const DEFAULT_OPTIONS = {
@@ -161,6 +165,8 @@ const DEFAULT_OPTIONS = {
   googleIncludeMemex: false,
   googleIncludePlaces: true,
   customCSS: DEFAULT_CSS,
+  simulateMiddleClick: false,
+  customGitlabUrl: '^https://(www.)?\\.*git.*\\.',
 };
 
 const keybindingStringToArray = (kb) => {

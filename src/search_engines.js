@@ -35,6 +35,12 @@
  */
 
 class SearchResult {
+  // We must declare the private class fields.
+  #element;
+  #anchorSelector;
+  #highlightedElementSelector;
+  #containerSelector;
+
   /**
    * @param {Element} element
    * @param {function|null} anchorSelector
@@ -49,35 +55,35 @@ class SearchResult {
       highlightedElementSelector,
       containerSelector,
   ) {
-    this.element_ = element;
-    this.anchorSelector_ = anchorSelector;
+    this.#element = element;
+    this.#anchorSelector = anchorSelector;
     this.highlightClass = highlightClass;
-    this.highlightedElementSelector_ = highlightedElementSelector;
-    this.containerSelector_ = containerSelector;
+    this.#highlightedElementSelector = highlightedElementSelector;
+    this.#containerSelector = containerSelector;
   }
   get anchor() {
-    if (!this.anchorSelector_) {
-      return this.element_;
+    if (!this.#anchorSelector) {
+      return this.#element;
     }
-    return this.anchorSelector_(this.element_);
+    return this.#anchorSelector(this.#element);
   }
   get container() {
-    if (!this.containerSelector_) {
-      return this.element_;
+    if (!this.#containerSelector) {
+      return this.#element;
     }
-    return this.containerSelector_(this.element_);
+    return this.#containerSelector(this.#element);
   }
   get highlightedElement() {
-    if (!this.highlightedElementSelector_) {
-      return this.element_;
+    if (!this.#highlightedElementSelector) {
+      return this.#element;
     }
-    return this.highlightedElementSelector_(this.element_);
+    return this.#highlightedElementSelector(this.#element);
   }
 }
 
 // eslint-disable-next-line
 /**
- * @param {...[Element[], function|null]} includedSearchResults An array of
+ * @param {Array} includedSearchResults An array of
  * tuples.  Each tuple contains collection of the search results optionally
  * accompanied with their container selector.
  * @constructor
@@ -154,6 +160,24 @@ const selectorElementGetter = (selector) => {
   };
 };
 
+const nParent = (element, n) => {
+  while (n > 0 && element) {
+    element = element.parentElement;
+    n--;
+  }
+  return element;
+};
+
+const debounce = (callback, delayMs) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      return callback(...args);
+    }, delayMs);
+  };
+};
+
 class GoogleSearch {
   constructor(options) {
     this.options = options;
@@ -168,7 +192,7 @@ class GoogleSearch {
     // 'input[role="combobox"]' but this doesn't work when there's also a
     // dictionary search box.
     // return '#searchform input[name=q]',
-    return 'form[role=search] input[name=q]';
+    return 'form[role=search] [name=q]';
   }
   getTopMargin(element) {
     return getFixedSearchBoxTopMargin(
@@ -180,20 +204,35 @@ class GoogleSearch {
     return isFirefox() ? 0 : getDefaultBottomMargin();
   }
   onChangedResults(callback) {
-    if (this.isImagesTab_()) {
-      return this.onImageSearchResults_(callback);
+    if (GoogleSearch.#isImagesTab()) {
+      return GoogleSearch.#onImageSearchResults(callback);
     }
     if (this.options.googleIncludeMemex) {
-      return this.onMemexResults_(callback);
+      return GoogleSearch.#onMemexResults(callback);
     }
+    // https://github.com/infokiller/web-search-navigator/issues/464
+    const container = document.querySelector('#rcnt');
+    if (!container) {
+      return;
+    }
+    const observer = new MutationObserver(
+        debounce((mutationsList, observer) => {
+          callback(true);
+        }, 50),
+    );
+    observer.observe(container, {
+      attributes: false,
+      childList: true,
+      subtree: true,
+    });
   }
 
-  isImagesTab_() {
+  static #isImagesTab() {
     const searchParams = new URLSearchParams(window.location.search);
     return searchParams.get('tbm') === 'isch';
   }
 
-  getImagesTabResults_() {
+  static #getImagesTabResults() {
     const includedElements = [
       // Image links
       {
@@ -209,11 +248,8 @@ class GoogleSearch {
     return getSortedSearchResults(includedElements, []);
   }
 
-  getSearchResults() {
-    if (this.isImagesTab_()) {
-      return this.getImagesTabResults_();
-    }
-    const includedElements = [
+  static #regularResults() {
+    return [
       {
         nodes: document.querySelectorAll('#search .r > a:first-of-type'),
         highlightClass: 'wsn-google-focused-link',
@@ -223,6 +259,31 @@ class GoogleSearch {
         nodes: document.querySelectorAll('#search .r g-link > a:first-of-type'),
         highlightClass: 'wsn-google-focused-link',
         containerSelector: (n) => n.parentElement.parentElement,
+      },
+      // More results button in continous loading
+      // https://imgur.com/a/X9zyJ24
+      {
+        nodes: document.querySelectorAll(
+            '#botstuff a[href^="/search"][href*="start="] h3',
+        ),
+        highlightClass: 'wsn-google-focused-link',
+        anchorSelector: (n) => n.closest('a'),
+      },
+      // Continuously loaded results are *sometimes* in the #botstuff container
+      // https://imgur.com/a/s6ow0La
+      {
+        nodes: document.querySelectorAll('#botstuff a h3'),
+        highlightClass: 'wsn-google-focused-link',
+        containerSelector: (n) => nParent(n, 5),
+        highlightedElementSelector: (n) => nParent(n, 5),
+        anchorSelector: (n) => n.closest('a'),
+      },
+      // Sometimes featured snippets are not contained in #search (possibly when
+      // there are large images?): https://imgur.com/a/VluRKIQ
+      {
+        nodes: document.querySelectorAll('.xpdopen .g a'),
+        highlightClass: 'wsn-google-focused-link',
+        highlightedElementSelector: (n) => n.querySelector('h3'),
       },
       // Large YouTube video as top result: https://imgur.com/a/JIe62QV
       {
@@ -249,6 +310,42 @@ class GoogleSearch {
         nodes: document.querySelectorAll('#search g-card a'),
         highlightClass: 'wsn-google-focused-link',
       },
+      // Jobs heading for the jobs cards section. Clicking on it takes you
+      // to Google's job search.
+      // As of 2023-05-28, the Google's jobs search URLs seem to contain two
+      // query string params which seem relevant:
+      // - ibp=htl;jobs
+      // - htivrt=jobs
+      // The first one matches the jobs heading, but also buttons in the
+      // jobs UI such as filtering by WFH/in-office. Therefore, we use the
+      // second one for specific jobs, but the first one to detect the jobs
+      // heading (otherwise it would be matched later in vaccines).
+      // eslint-disable-next-line max-len
+      // const jobsSelector = '#search a:is([href*="ibp=htl;jobs"], [href*="htivrt=jobs"])';
+      // NOTE: this must be added to the included elements before:
+      // - vaccines
+      // - vertical maps
+      // - books and featured snippets
+      // TODO: add screenshot
+      {
+        nodes: document.querySelectorAll(
+            // eslint-disable-next-line max-len
+            '#search a:is([href*="ibp=htl;jobs"],[href*="htivrt=jobs"]) [role=heading][aria-level="2"]',
+        ),
+        anchorSelector: (n) => n.closest('a'),
+        // highlightedElementSelector: (n) => n.closest('li'),
+        highlightClass: 'wsn-google-focused-job-card',
+      },
+      // Same as above, but for specific job results.
+      // TODO: add screenshot
+      // Jobs cards
+      {
+        // nodes: document.querySelectorAll('#search a[href*="htivrt=jobs"]'),
+        // eslint-disable-next-line max-len
+        nodes: document.querySelectorAll('#search li a[href*="htivrt=jobs"]'),
+        highlightedElementSelector: (n) => n.closest('li'),
+        highlightClass: 'wsn-google-focused-job-card',
+      },
       // Books tab: https://imgur.com/a/QSBIOb6
       // NOTE: This is required for matching "features snippets" in the general
       // search tab, and also matches other results.
@@ -265,141 +362,170 @@ class GoogleSearch {
         highlightClass: 'wsn-google-card-item',
       },
     ];
-    if (this.options.googleIncludeCards) {
-      const nearestChildOrSiblingOrParentAnchor = (element) => {
-        const childAnchor = element.querySelector('a');
-        if (childAnchor && childAnchor.href) {
-          return childAnchor;
-        }
-        const siblingAnchor = element.parentElement.querySelector('a');
-        if (siblingAnchor && siblingAnchor.href) {
-          return siblingAnchor;
-        }
-        return element.closest('a');
-      };
-      const nearestCardContainer = (element) => {
-        return element.closest('g-inner-card');
-      };
-      includedElements.push(
-          // Twitter: https://imgur.com/a/fdI75JG
-          {
-            nodes: document.querySelectorAll(
-                '#search [data-init-vis=true] [role=heading]',
-            ),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightedElementSelector: nearestCardContainer,
-            highlightClass: 'wsn-google-focused-card',
-          },
-          // Vertical "Top stories" results
-          {
-            nodes: document.querySelectorAll(
-                '#search [role=text] [role=heading]',
-            ),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightClass: 'wsn-google-focused-link',
-          },
-          // Vertical video results: https://imgur.com/a/GyKhwrx
-          // Vertical video results: https://imgur.com/a/8fbPnvT
-          {
-            nodes: document.querySelectorAll(
-                '#search video-voyager a [role=heading]',
-            ),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            containerSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightedElementSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightClass: 'wsn-google-focused-link',
-          },
-          // Horizontal video results: https://imgur.com/a/gRGJ7l9
-          // People also search for: https://imgur.com/a/QpCHKt0
-          {
-            nodes: document.querySelectorAll(
-                '#search g-scrolling-carousel g-inner-card a [role=heading]',
-            ),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            containerSelector: nearestCardContainer,
-            highlightedElementSelector: nearestCardContainer,
-            highlightClass: 'wsn-google-card-item',
-          },
-          // Vaccines: https://imgur.com/a/325qJzE
-          {
-            nodes: document.querySelectorAll(
-                '#search a.a-no-hover-decoration [role=heading]',
-            ),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            containerSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightedElementSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightClass: 'wsn-google-focused-link',
-          },
-          // Things to do in X: https://imgur.com/a/ibXwiuT
-          {
-            nodes: document.querySelectorAll('td a [role=heading]'),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            containerSelector: (n) => n.closest('td'),
-            highlightedElementSelector: (n) => n.closest('td'),
-            highlightClass: 'wsn-google-card-item',
-          },
-          // Vertical Maps/Places: https://imgur.com/a/JXrxBCj
-          // Vertical recipes: https://imgur.com/a/3r7klHk
-          // Top stories grid: https://imgur.com/a/mY93YRF
-          // TODO: fix the small movements in recipes item selection.
-          {
-            nodes: document.querySelectorAll('a [role=heading]'),
-            anchorSelector: nearestChildOrSiblingOrParentAnchor,
-            containerSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightedElementSelector: nearestChildOrSiblingOrParentAnchor,
-            highlightClass: 'wsn-google-card-item',
-          },
-      );
-    }
-    if (this.options.googleIncludePlaces) {
-      const nodes = document.querySelectorAll('.vk_c a');
-      // The first node is usually the map image which needs to be styled
-      // differently.
-      let map;
-      let links = nodes;
-      if (nodes[0] != null && nodes[0].querySelector('img')) {
-        map = nodes[0];
-        links = Array.from(nodes).slice(1);
+  }
+
+  static #cardResults() {
+    const nearestChildOrSiblingOrParentAnchor = (element) => {
+      const childAnchor = element.querySelector('a');
+      if (childAnchor && childAnchor.href) {
+        return childAnchor;
       }
-      if (map != null) {
-        includedElements.push({
-          nodes: [map],
-          highlightedElementSelector: (n) => n.parentElement,
-          highlightClass: 'wsn-google-focused-map',
-        });
+      const siblingAnchor = element.parentElement.querySelector('a');
+      if (siblingAnchor && siblingAnchor.href) {
+        return siblingAnchor;
       }
-      includedElements.push({
-        nodes: links,
+      return element.closest('a');
+    };
+    const nearestCardContainer = (element) => {
+      return element.closest('g-inner-card');
+    };
+    return [
+      // Twitter: https://imgur.com/a/fdI75JG
+      {
+        nodes: document.querySelectorAll(
+            '#search [data-init-vis=true] [role=heading]',
+        ),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightedElementSelector: nearestCardContainer,
+        highlightClass: 'wsn-google-focused-card',
+      },
+      // Vertical "Top stories" results
+      {
+        nodes: document.querySelectorAll('#search [role=text] [role=heading]'),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
         highlightClass: 'wsn-google-focused-link',
+      },
+      // Vertical video results: https://imgur.com/a/GyKhwrx
+      // Vertical video results: https://imgur.com/a/8fbPnvT
+      {
+        nodes: document.querySelectorAll(
+            '#search video-voyager a [role=heading]',
+        ),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
+        containerSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightedElementSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightClass: 'wsn-google-focused-link',
+      },
+      // Horizontal video results: https://imgur.com/a/gRGJ7l9
+      // People also search for: https://imgur.com/a/QpCHKt0
+      {
+        nodes: document.querySelectorAll(
+            '#search g-scrolling-carousel g-inner-card a [role=heading]',
+        ),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
+        containerSelector: nearestCardContainer,
+        highlightedElementSelector: nearestCardContainer,
+        highlightClass: 'wsn-google-card-item',
+      },
+      // Vaccines: https://imgur.com/a/325qJzE
+      {
+        nodes: document.querySelectorAll(
+            '#search a.a-no-hover-decoration [role=heading]',
+        ),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
+        containerSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightedElementSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightClass: 'wsn-google-focused-link',
+      },
+      // Things to do in X: https://imgur.com/a/ibXwiuT
+      {
+        nodes: document.querySelectorAll('td a [role=heading]'),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
+        containerSelector: (n) => n.closest('td'),
+        highlightedElementSelector: (n) => n.closest('td'),
+        highlightClass: 'wsn-google-card-item',
+      },
+      // Vertical Maps/Places: https://imgur.com/a/JXrxBCj
+      // Vertical recipes: https://imgur.com/a/3r7klHk
+      // Top stories grid: https://imgur.com/a/mY93YRF
+      // TODO: fix the small movements in recipes item selection.
+      {
+        nodes: document.querySelectorAll('a [role=heading]'),
+        anchorSelector: nearestChildOrSiblingOrParentAnchor,
+        containerSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightedElementSelector: nearestChildOrSiblingOrParentAnchor,
+        highlightClass: 'wsn-google-card-item',
+      },
+    ];
+  }
+
+  static #placesResults() {
+    const nodes = document.querySelectorAll('.vk_c a');
+    // The first node is usually the map image which needs to be styled
+    // differently.
+    let map;
+    let links = nodes;
+    if (nodes[0] != null && nodes[0].querySelector('img')) {
+      map = nodes[0];
+      links = Array.from(nodes).slice(1);
+    }
+    const results = [];
+    if (map != null) {
+      results.push({
+        nodes: [map],
+        highlightedElementSelector: (n) => n.parentElement,
+        highlightClass: 'wsn-google-focused-map',
       });
     }
-    if (this.options.googleIncludeMemex) {
-      includedElements.push({
+    results.push({
+      nodes: links,
+      highlightClass: 'wsn-google-focused-link',
+    });
+    return results;
+  }
+
+  static #memexResults() {
+    return [
+      {
         nodes: document.querySelectorAll(
             '#memexResults ._3d3zwUrsb4CVi1Li4H6CBw a',
         ),
         highlightClass: 'wsn-google-focused-memex-result',
-      });
+      },
+    ];
+  }
+
+  getSearchResults() {
+    if (GoogleSearch.#isImagesTab()) {
+      return GoogleSearch.#getImagesTabResults();
     }
-    // People also ask. Each one of the used selectors should be sufficient,
-    // but we use both to be more robust to upstream DOM changes.
+    const includedElements = GoogleSearch.#regularResults();
+    if (this.options.googleIncludeCards) {
+      includedElements.push(...GoogleSearch.#cardResults());
+    }
+    if (this.options.googleIncludePlaces) {
+      includedElements.push(...GoogleSearch.#placesResults());
+    }
+    if (this.options.googleIncludeMemex) {
+      includedElements.push(...GoogleSearch.#memexResults());
+    }
     const excludedElements = document.querySelectorAll(
         [
+          // People also ask. Each one of the used selectors should be
+          // sufficient, but we use both to be more robust to upstream DOM
+          // changes.
           '.related-question-pair a',
           '#search .kp-blk:not(.c2xzTb) .r > a:first-of-type',
+          // Right hand sidebar. We exclude it because it is after all the
+          // results in the document order (as determined by
+          // Node.DOCUMENT_POSITION_FOLLOWING used in getSortedSearchResults),
+          // and it's confusing.
+          '#rhs a',
         ].join(', '),
     );
     return getSortedSearchResults(includedElements, excludedElements);
   }
 
-  onImageSearchResults_(callback) {
+  static #onImageSearchResults(callback) {
     const container = document.querySelector('.islrc');
     if (!container) {
       return;
     }
-    const observer = new MutationObserver(async (mutationsList, observer) => {
-      callback(true);
-    });
+    const observer = new MutationObserver(
+        debounce((mutationsList, observer) => {
+          callback(true);
+        }, 50),
+    );
     observer.observe(container, {
       attributes: false,
       childList: true,
@@ -407,16 +533,18 @@ class GoogleSearch {
     });
   }
 
-  onMemexResults_(callback) {
+  static #onMemexResults(callback) {
     const container = document.querySelector('#rhs');
     if (!container) {
       return;
     }
-    const observer = new MutationObserver(async (mutationsList, observer) => {
-      if (document.querySelector('#memexResults') != null) {
-        callback(true);
-      }
-    });
+    const observer = new MutationObserver(
+        debounce((mutationsList, observer) => {
+          if (document.querySelector('#memexResults') != null) {
+            callback(true);
+          }
+        }, 50),
+    );
     observer.observe(container, {
       attributes: false,
       childList: true,
@@ -424,7 +552,7 @@ class GoogleSearch {
     });
   }
 
-  get imageSearchTabs_() {
+  static #imageSearchTabs() {
     const visibleTabs = document.querySelectorAll('.T47uwc > a');
     // NOTE: The order of the tabs after the first two is dependent on the
     // query. For example:
@@ -468,9 +596,22 @@ class GoogleSearch {
 
   // Array storing tuples of tabs navigation keybindings and their corresponding
   // CSS selector
+  get previousPageButton() {
+    if (GoogleSearch.#isImagesTab()) {
+      return null;
+    }
+    return selectorElementGetter('#pnprev');
+  }
+
+  get nextPageButton() {
+    if (GoogleSearch.#isImagesTab()) {
+      return null;
+    }
+    return selectorElementGetter('#pnnext');
+  }
   get tabs() {
-    if (this.isImagesTab_()) {
-      return this.imageSearchTabs_;
+    if (GoogleSearch.#isImagesTab()) {
+      return GoogleSearch.#imageSearchTabs();
     }
     return {
       navigateSearchTab: selectorElementGetter(
@@ -485,8 +626,6 @@ class GoogleSearch {
       navigateBooksTab: selectorElementGetter('a[href*="&tbm=bks"]'),
       navigateFlightsTab: selectorElementGetter('a[href*="&tbm=flm"]'),
       navigateFinancialTab: selectorElementGetter('[href*="/finance?"]'),
-      navigatePreviousResultPage: selectorElementGetter('#pnprev'),
-      navigateNextResultPage: selectorElementGetter('#pnnext'),
     };
   }
 
@@ -639,9 +778,11 @@ class BraveSearch {
 
   onChangedResults(callback) {
     const containers = document.querySelectorAll('#results');
-    const observer = new MutationObserver(async (mutationsList, observer) => {
-      callback(true);
-    });
+    const observer = new MutationObserver(
+        debounce((mutationsList, observer) => {
+          callback(true);
+        }, 50),
+    );
     for (const container of containers) {
       observer.observe(container, {
         attributes: false,
@@ -651,7 +792,7 @@ class BraveSearch {
     }
   }
 
-  getNewsTabResults_() {
+  static #getNewsTabResults() {
     const includedElements = [
       {
         nodes: document.querySelectorAll('.snippet a'),
@@ -659,11 +800,10 @@ class BraveSearch {
         containerSelector: (n) => n.parentElement,
       },
     ];
-
     return getSortedSearchResults(includedElements);
   }
 
-  getVideosTabResults_() {
+  static #getVideosTabResults() {
     const includedElements = [
       {
         nodes: document.querySelectorAll('.card a'),
@@ -672,15 +812,14 @@ class BraveSearch {
         containerSelector: (n) => n.parentElement,
       },
     ];
-
     return getSortedSearchResults(includedElements);
   }
 
   getSearchResults() {
-    if (this.isTabActive(this.tabs.navigateNewsTab)) {
-      return this.getNewsTabResults_();
-    } else if (this.isTabActive(this.tabs.navigateVideosTab)) {
-      return this.getVideosTabResults_();
+    if (BraveSearch.#isTabActive(this.tabs.navigateNewsTab)) {
+      return BraveSearch.#getNewsTabResults();
+    } else if (BraveSearch.#isTabActive(this.tabs.navigateVideosTab)) {
+      return BraveSearch.#getVideosTabResults();
     }
 
     const includedElements = [
@@ -708,16 +847,20 @@ class BraveSearch {
     return getSortedSearchResults(includedElements);
   }
 
-  isTabActive(tab) {
+  static #isTabActive(tab) {
     return tab && tab.parentElement.classList.contains('active');
   }
 
   get tabs() {
     return {
       navigateSearchTab: document.querySelector('a[href*="/search?q="]'),
-      navigateImagesTab: document.querySelector('a[href*="/images?q="]'),
+      navigateImagesTab: document.querySelector(
+          '#tab-images > a:first-of-type',
+      ),
       navigateNewsTab: document.querySelector('a[href*="/news?q="]'),
-      navigateVideosTab: document.querySelector('a[href*="/videos?q="]'),
+      navigateVideosTab: document.querySelector(
+          '#tab-videos > a:first-of-type',
+      ),
     };
   }
 }
@@ -730,7 +873,7 @@ class StartPage {
     return /^https:\/\/(www\.)?startpage\./;
   }
   get searchBoxSelector() {
-    return '.search-form__form input[id=q]';
+    return '#q';
   }
   getTopMargin(element) {
     return getFixedSearchBoxTopMargin(
@@ -746,21 +889,21 @@ class StartPage {
     return isFirefox() ? 0 : getDefaultBottomMargin();
   }
 
-  isSearchTab_() {
+  static #isSearchTab() {
     return document.querySelector('div.layout-web') != null;
   }
-  isImagesTab_() {
+  static #isImagesTab() {
     return document.querySelector('div.layout-images') != null;
   }
 
   getSearchResults() {
     // Don't initialize results navigation on image search, since it doesn't
     // work there.
-    if (this.isImagesTab_()) {
+    if (StartPage.#isImagesTab()) {
       return [];
     }
     const containerSelector = (element) => {
-      if (this.isSearchTab_()) {
+      if (StartPage.#isSearchTab()) {
         return element.closest('.w-gl__result');
       }
       return element;
@@ -789,6 +932,28 @@ class StartPage {
     return getSortedSearchResults(includedElements, excludedElements);
   }
 
+  get previousPageButton() {
+    const menuLinks = document.querySelectorAll('.inline-nav-menu__link');
+    if (!menuLinks || menuLinks.length < 4) {
+      return null;
+    }
+
+    return document.querySelector(
+        'form.pagination__form.next-prev-form--desktop:first-of-type',
+    );
+  }
+
+  get nextPageButton() {
+    const menuLinks = document.querySelectorAll('.inline-nav-menu__link');
+    if (!menuLinks || menuLinks.length < 4) {
+      return null;
+    }
+
+    return document.querySelector(
+        'form.pagination__form.next-prev-form--desktop:last-of-type',
+    );
+  }
+
   get tabs() {
     const menuLinks = document.querySelectorAll('.inline-nav-menu__link');
     if (!menuLinks || menuLinks.length < 4) {
@@ -799,12 +964,6 @@ class StartPage {
       navigateImagesTab: menuLinks[1],
       navigateVideosTab: menuLinks[2],
       navigateNewsTab: menuLinks[3],
-      navigatePreviousResultPage: document.querySelector(
-          'form.pagination__form.next-prev-form--desktop:first-of-type',
-      ),
-      navigateNextResultPage: document.querySelector(
-          'form.pagination__form.next-prev-form--desktop:last-of-type',
-      ),
     };
   }
 
@@ -840,6 +999,7 @@ class StartPage {
 class YouTube {
   constructor(options) {
     this.options = options;
+    this.gridNavigation = false;
   }
   get urlPattern() {
     return /^https:\/\/(www)\.youtube\./;
@@ -865,39 +1025,40 @@ class YouTube {
       'ytd-shelf-renderer',
     ].join(',');
     const resultsObserver = new MutationObserver(
-        async (mutationsList, observer) => {
+        debounce((mutationsList, observer) => {
           callback(true);
-        },
+        }, 50),
     );
     let lastLoadedURL = null;
-    const pageObserver = new MutationObserver(
-        async (mutationsList, observer) => {
-          const url = window.location.pathname + window.location.search;
-          if (url === lastLoadedURL) {
-            return;
-          } else {
-            resultsObserver.disconnect();
-          }
-          const containers = document.querySelectorAll(YT_CONTAINER_SELECTOR);
-          if (containers.length == 0) {
-            return;
-          }
-          lastLoadedURL = url;
-          callback(false);
-          for (const container of containers) {
-            resultsObserver.observe(container, {
-              attributes: false,
-              childList: true,
-              subtree: true,
-            });
-          }
-        },
-    );
+    const pageObserverCallback = (mutationsList, observer) => {
+      const url = window.location.pathname + window.location.search;
+      if (url === lastLoadedURL) {
+        return;
+      } else {
+        resultsObserver.disconnect();
+      }
+      const containers = document.querySelectorAll(YT_CONTAINER_SELECTOR);
+      if (containers.length == 0) {
+        return;
+      }
+      lastLoadedURL = url;
+      callback(false);
+      for (const container of containers) {
+        resultsObserver.observe(container, {
+          attributes: false,
+          childList: true,
+          subtree: true,
+        });
+      }
+    };
     // TODO: the observer callback is triggered many times because of the broad
     // changes that the observer tracks. I tried to use other observation specs
     // to limit it, but then it failed to detect URL changes without page load
     // (which is what happened in issue #337 [1]).
     // [1] https://github.com/infokiller/web-search-navigator/issues/337
+    const pageObserver = new MutationObserver(
+        debounce(pageObserverCallback, 50),
+    );
     pageObserver.observe(document.querySelector('#page-manager'), {
       attributes: false,
       childList: true,
@@ -923,15 +1084,6 @@ class YouTube {
         highlightedElementSelector: (n) => n.closest('ytd-playlist-renderer'),
         containerSelector: (n) => n.closest('ytd-playlist-renderer'),
       },
-      // Home page lists
-      {
-        nodes: document.querySelectorAll(
-            'ytd-rich-item-renderer a#video-title-link',
-        ),
-        highlightClass: 'wsn-youtube-focused-video',
-        highlightedElementSelector: (n) => n.closest('ytd-rich-item-renderer'),
-        containerSelector: (n) => n.closest('ytd-rich-item-renderer'),
-      },
       // Playlists
       {
         nodes: document.querySelectorAll('a.ytd-playlist-video-renderer'),
@@ -955,7 +1107,33 @@ class YouTube {
         containerSelector: (n) => n.closest('ytd-grid-video-renderer'),
       },
     ];
-    return getSortedSearchResults(includedElements, []);
+    // checking if homepage results are present
+    const homePageElements = {
+      nodes: document.querySelectorAll(
+          'ytd-rich-item-renderer a#video-title-link',
+      ),
+      highlightClass: 'wsn-youtube-focused-video',
+      highlightedElementSelector: (n) => n.closest('ytd-rich-item-renderer'),
+      containerSelector: (n) => n.closest('ytd-rich-item-renderer'),
+    };
+    const results = getSortedSearchResults(
+        [...includedElements, homePageElements],
+        [],
+    );
+    // When navigating away from the home page, the home page elements are still
+    // in the DOM but they are not visible, so we must check if they are
+    // visible (using offsetParent), not just if they are present.
+    const isHomePage = Array.from(homePageElements.nodes).some(
+        (n) => n.offsetParent != null,
+    );
+    const gridRow = document.querySelector('ytd-rich-grid-row');
+    if (isHomePage && gridRow != null) {
+      results.itemsPerRow = gridRow.getElementsByTagName(
+          'ytd-rich-item-renderer',
+      ).length;
+      results.gridNavigation = results.itemsPerRow > 0;
+    }
+    return results;
   }
 
   changeTools(period) {
@@ -1026,17 +1204,21 @@ class GoogleScholar {
     return getSortedSearchResults(includedElements, []);
   }
 
-  get tabs() {
-    const tabs = {};
+  get previousPageButton() {
     const previousPageElement = document.querySelector('.gs_ico_nav_previous');
     if (previousPageElement !== null) {
-      tabs.navigatePreviousResultPage = previousPageElement.parentElement;
+      return previousPageElement.parentElement;
     }
+
+    return null;
+  }
+
+  get nextPageButton() {
     const nextPageElement = document.querySelector('.gs_ico_nav_next');
     if (nextPageElement !== null) {
-      tabs.navigateNextResultPage = nextPageElement.parentElement;
+      return nextPageElement.parentElement;
     }
-    return tabs;
+    return null;
   }
 }
 
@@ -1055,9 +1237,11 @@ class Amazon {
     if (!container) {
       return;
     }
-    const observer = new MutationObserver(async (mutationsList, observer) => {
-      callback(false);
-    });
+    const observer = new MutationObserver(
+        debounce((mutationsList, observer) => {
+          callback(false);
+        }, 50),
+    );
     observer.observe(container, {
       attributes: false,
       childList: true,
@@ -1092,7 +1276,7 @@ class Amazon {
       },
       // Next/previous and page numbers.
       {
-        nodes: document.querySelectorAll('.a-pagination a'),
+        nodes: document.querySelectorAll('a.s-pagination-item'),
         highlightClass: 'wsn-amazon-focused-item',
       },
       // Shopping card items
@@ -1114,21 +1298,12 @@ class Amazon {
     return getSortedSearchResults(includedElements, excludedElements);
   }
 
-  get tabs() {
-    const pagesTabs = {
-      navigateNextResultPage: document.querySelector('.a-pagination .a-last a'),
-    };
-    const paginationContainer = document.querySelector('.a-pagination');
-    if (
-      paginationContainer &&
-      paginationContainer.children[0] &&
-      !paginationContainer.children[0].classList.contains('a-normal')
-    ) {
-      // prettier-ignore
-      pagesTabs.navigatePreviousResultPage =
-        paginationContainer.children[0].querySelector('a');
-    }
-    return pagesTabs;
+  get previousPageButton() {
+    return document.querySelector('a.s-pagination-previous');
+  }
+
+  get nextPageButton() {
+    return document.querySelector('a.s-pagination-next');
   }
 }
 
@@ -1143,10 +1318,10 @@ class Github {
     // TODO: With the escape key, this only works the first time the keybinding
     // is used, Since Github seem to capture this as well, which causes it to
     // leave the search box.
-    return '[role="combobox"] input[name="q"]';
+    return 'input[name="q"]';
   }
 
-  getCommitSearchLinks_() {
+  static #getCommitSearchLinks() {
     const commitsContainers = document.querySelectorAll(
         '#commit_search_results .text-normal',
     );
@@ -1185,7 +1360,7 @@ class Github {
       },
       // Commits/PRs
       {
-        nodes: this.getCommitSearchLinks_(),
+        nodes: Github.#getCommitSearchLinks(),
         highlightClass: 'wsn-github-focused-item',
       },
       // Issues
@@ -1253,7 +1428,7 @@ class Github {
     }
     const excludedElements = [
       // Exclude small links
-      ...document.querySelectorAll('.muted-link'),
+      ...document.querySelectorAll('.muted-link, .Link--muted'),
       // Exclude topic tags
       ...document.querySelectorAll('.topic-tag'),
       // Exclude small links in commits
@@ -1264,27 +1439,27 @@ class Github {
   }
 
   onChangedResults(callback) {
-    // NOTE: Using body breaks the search box: when it's clicked on, it is
-    // briefly expanded and then automatically closed with no way to type in it.
-    const container = document.querySelector('.application-main ');
+    const container = document.querySelector('body');
     if (!container) {
       return;
     }
     // Store the last URL to detect page navigations (for example going to the
     // next page of results).
     let lastURL = window.location.href;
-    const observer = new MutationObserver(async (mutationsList, observer) => {
-      let appendOnly = true;
-      if (window.location.href !== lastURL) {
-        lastURL = window.location.href;
-        appendOnly = false;
-      }
-      callback(appendOnly);
-    });
+    const observer = new MutationObserver(
+        debounce((mutationsList, observer) => {
+          let appendOnly = true;
+          if (window.location.href !== lastURL) {
+            lastURL = window.location.href;
+            appendOnly = false;
+          }
+          callback(appendOnly);
+        }, 50),
+    );
     observer.observe(container, {
       attributes: false,
       childList: true,
-      subtree: true,
+      subtree: false,
     });
   }
 
@@ -1292,6 +1467,78 @@ class Github {
   // https://docs.github.com/en/github/getting-started-with-github/keyboard-shortcuts
   get tabs() {
     return {};
+  }
+}
+
+class Gitlab {
+  constructor(options) {
+    this.options = options;
+  }
+
+  get urlPattern() {
+    return /^https:\/\/(www\.)?gitlab\.com/;
+  }
+
+  get searchBoxSelector() {
+    return '.form-input, input[id=search]';
+  }
+
+  getTopMargin(element) {
+    return getFixedSearchBoxTopMargin(
+        document.querySelector('header.navbar'),
+        element,
+    );
+  }
+
+  onChangedResults(callback) {
+    const containers = document.querySelectorAll(
+        '.projects-list, .groups-list, #content-body',
+    );
+    const observer = new MutationObserver(async (mutationsList, observer) => {
+      callback(true);
+    });
+    for (const container of containers) {
+      observer.observe(container, {
+        attributes: false,
+        childList: true,
+        subtree: true,
+      });
+    }
+  }
+
+  getSearchResults() {
+    const includedElements = [
+      {
+        nodes: document.querySelectorAll('li.project-row h2 a'),
+        containerSelector: (n) => n.closest('li.project-row'),
+        highlightedElementSelector: (n) => n.closest('li.project-row'),
+        highlightClass: 'wsn-gitlab-focused-group-row',
+      },
+      // Org subgroups, for example:
+      // https://gitlab.archlinux.org/archlinux
+      {
+        nodes: document.querySelectorAll(
+            'ul.groups-list li.group-row a[aria-label]',
+        ),
+        containerSelector: (n) => n.closest('li.group-row'),
+        highlightedElementSelector: (n) => n.closest('li.group-row'),
+        highlightClass: 'wsn-gitlab-focused-group-row',
+      },
+      // Prev/next page
+      {
+        nodes: document.querySelectorAll('li.page-item a.page-link'),
+        containerSelector: (n) => n.closest('li.page-item'),
+        highlightedElementSelector: (n) => n.closest('li.group-row'),
+        highlightClass: 'wsn-gitlab-focused-group-row',
+      },
+    ];
+    return getSortedSearchResults(includedElements);
+  }
+}
+
+class CustomGitlab extends Gitlab {
+  get urlPattern() {
+    return new RegExp(this.options.customGitlabUrl);
   }
 }
 
@@ -1306,6 +1553,8 @@ const getSearchEngine = (options) => {
     new GoogleScholar(options),
     new Amazon(options),
     new Github(options),
+    new Gitlab(options),
+    new CustomGitlab(options),
   ];
   // Switch over all compatible search engines
   const href = window.location.href;

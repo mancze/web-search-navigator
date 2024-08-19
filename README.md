@@ -1,11 +1,13 @@
 # ![Logo](./src/icon48.png?raw=true) Web Search Navigator
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/rating/cohamjploocgoejdfanacfgkhjkhdkek?label=Chrome)](https://chrome.google.com/webstore/detail/web-search-navigator/cohamjploocgoejdfanacfgkhjkhdkek)
+[![Mozilla Add-on](https://img.shields.io/amo/rating/web-search-navigator?label=Firefox)](https://addons.mozilla.org/en-US/firefox/addon/web-search-navigator/)
 [![CodeFactor](https://www.codefactor.io/repository/github/infokiller/web-search-navigator/badge)](https://www.codefactor.io/repository/github/infokiller/web-search-navigator)
 [![CodeQL](https://github.com/infokiller/web-search-navigator/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/infokiller/web-search-navigator/actions/workflows/codeql-analysis.yml)
 [![Linters](https://github.com/infokiller/web-search-navigator/actions/workflows/lint.yml/badge.svg)](https://github.com/infokiller/web-search-navigator/actions/workflows/lint.yml)
 
 Browser extension that adds configurable keyboard shortcuts to Google search,
-YouTube, Startpage, Brave Search, Google Scholar, Github, and Amazon.
+YouTube, Startpage, Brave Search, Google Scholar, Github, Gitlab, and Amazon.
 
 ![Demo flow](./assets/demo.gif?raw=true)
 
@@ -18,6 +20,7 @@ YouTube, Startpage, Brave Search, Google Scholar, Github, and Amazon.
     - [Installing from a release](#installing-from-a-release)
   - [Firefox](#firefox)
   - [Edge](#edge)
+  - [Safari (experimental)](#safari-experimental)
 - [Keybindings](#keybindings)
 - [Development](#development)
   - [Coding style](#coding-style)
@@ -45,9 +48,9 @@ YouTube, Startpage, Brave Search, Google Scholar, Github, and Amazon.
 - Supports both key combos and key sequences
 - Custom CSS rules to control the look of highlighted results
 - Experimental and optional support for YouTube, Startpage, Brave Search, Google
-  Scholar, Github, and Amazon (needs to be enabled in the options). Note that
-  the extension does not have permissions for these optional websites unless you
-  explicitly enable them.
+  Scholar, Github, Gitlab, and Amazon (needs to be enabled in the options). Note
+  that the extension does not have permissions for these optional websites
+  unless you explicitly enable them.
 
 ## Installation
 
@@ -81,6 +84,13 @@ Install from the
 
 Install from
 [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/inkjbmhmeghalgpacijccmbmbclkjgop).
+
+### Safari (experimental)
+
+> NOTE: Safari is supported on a best-effort basis and isn't packaged yet.
+
+Follow
+[these steps](https://github.com/infokiller/web-search-navigator/issues/64#issuecomment-1166552333).
 
 ## Keybindings
 
@@ -236,5 +246,5 @@ See [PRIVACY_POLICY.md](./docs/PRIVACY_POLICY.md).
 
 This project is not affiliated with Google LLC.
 
-©2022 Google LLC All rights reserved. Google™ search is a trademark of Google
+©2023 Google LLC All rights reserved. Google™ search is a trademark of Google
 LLC.

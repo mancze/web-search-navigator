@@ -8,9 +8,10 @@ module.exports = {
   },
   extends: ['eslint:recommended', 'google', 'plugin:json/recommended'],
   parserOptions: {
-    ecmaVersion: 11,
+    ecmaVersion: 13,
   },
   rules: {
     'require-jsdoc': 0,
+    'space-in-parens': ['error', 'never'],
   },
 };
